@@ -45,7 +45,7 @@ pip install -r requirements.txt
 
 ---
 
-## 📌 Opción 1: Descarga Manual con Pausa para CAPTCHA
+## 📝 Opción 1: Descarga Manual con Pausa para CAPTCHA
 
 **Archivos**: `download_curp.py`
 
@@ -76,7 +76,7 @@ CURP_NUMBER = "ABCD890513ABCDEF09"  # Tu CURP aquí
 
 ---
 
-## 📌 Opción 2: Descarga Automática con CAPTCHA Solver
+## 📝 Opción 2: Descarga Automática con CAPTCHA Solver
 
 **Archivos**: `download_with_captcha_solver.py`
 
@@ -118,7 +118,7 @@ python download_with_captcha_solver.py
 
 ---
 
-## 📌 Opción 3: Descarga usando API
+## 📝 Opción 3: Descarga usando API
 
 **Archivos**: `download_with_api.py`
 

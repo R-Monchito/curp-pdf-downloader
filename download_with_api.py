@@ -167,7 +167,7 @@ def print_info():
     print("="*60)
     
     for provider, config in API_ENDPOINTS.items():
-        print(f"\n📌 {provider.upper()}")
+        print(f"\n📋 {provider.upper()}")
         print(f"   Documentación: {config['docs']}")
         print(f"   Endpoint: {config['url']}")
     

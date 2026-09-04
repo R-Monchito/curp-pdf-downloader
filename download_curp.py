@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Descargador de CURP - Opción 1: Manual con Pausa para CAPTCHA
-Usa Selenium para automatizar el flujo, pero pausa para resolver CAPTCHA manualmente.
+Versión BATCH: Procesa múltiples CURPs desde archivo curps.txt
 
 Uso:
     python download_curp.py
@@ -9,6 +9,7 @@ Uso:
 Requisitos:
     - Python 3.8+
     - pip install -r requirements.txt
+    - Archivo curps.txt con un CURP por línea
 """
 
 import os
@@ -23,10 +24,42 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
 
 # Configuración
-CURP_NUMBER = "ABCD890513ABCDEF09"  # Reemplaza con tu CURP
 GOB_MX_URL = "https://www.gob.mx/curp/"
+CURPS_FILE = "curps.txt"
 DOWNLOAD_DIR = "./downloads"
 TIMEOUT = 30
+
+
+def load_curps_from_file(filename):
+    """
+    Carga los CURPs desde un archivo de texto.
+    
+    Args:
+        filename (str): Nombre del archivo con CURPs
+        
+    Returns:
+        list: Lista de CURPs válidos
+    """
+    if not os.path.exists(filename):
+        print(f"\u274c Error: No se encontró el archivo '{filename}'")
+        print(f"\n\ud83d\udca1 Crea un archivo '{filename}' con un CURP por línea:")
+        print("   Ejemplo:")
+        print("   PEPE900101HDFABC09")
+        print("   ABCD890513ABCDEF09")
+        print("   XYZW950315MNOPQR12")
+        return []
+    
+    curps = []
+    with open(filename, 'r', encoding='utf-8') as f:
+        for line in f:
+            curp = line.strip().upper()
+            # Validar formato
+            if curp and len(curp) == 18 and curp.isalnum():
+                curps.append(curp)
+            elif curp:  # Si tiene contenido pero no es válido
+                print(f"\u26a0\ufe0f  CURP inválido ignorado: {curp}")
+    
+    return curps
 
 
 def setup_driver():
@@ -63,32 +96,33 @@ def setup_driver():
         sys.exit(1)
 
 
-def download_curp_pdf(curp):
+def download_curp_pdf(driver, curp, index, total):
     """
     Descarga el PDF del CURP desde gob.mx/curp/
     
     Args:
+        driver: Selenium WebDriver
         curp (str): CURP a descargar (18 caracteres)
+        index (int): Índice actual en la lista
+        total (int): Total de CURPs
+        
+    Returns:
+        bool: True si fue exitoso
     """
     
-    if len(curp) != 18:
-        print(f"❌ Error: CURP debe tener 18 caracteres. Recibido: {len(curp)}")
-        return False
+    print(f"\n{'='*60}")
+    print(f"[{index}/{total}] Procesando CURP: {curp}")
+    print(f"{'='*60}")
     
-    driver = None
     try:
-        driver = setup_driver()
-        
         # Paso 1: Navegar al sitio
-        print(f"\n[1/5] Navegando a {GOB_MX_URL}...")
+        print(f"[1/5] Navegando a {GOB_MX_URL}...")
         driver.get(GOB_MX_URL)
         time.sleep(3)
         
         # Paso 2: Buscar y rellenar campo de CURP
-        print("[2/5] Buscando campo de CURP...")
+        print("[2/5] Ingresando CURP...")
         try:
-            # Intentar encontrar el campo CURP
-            # NOTA: Los selectores pueden cambiar según el sitio
             curp_input = WebDriverWait(driver, TIMEOUT).until(
                 EC.presence_of_element_located((By.ID, "curp"))
             )
@@ -97,19 +131,18 @@ def download_curp_pdf(curp):
             print(f"✅ CURP ingresado: {curp}")
         except Exception as e:
             print(f"⚠️  Selector estándar no encontrado. Intentando alternativas...")
-            # Intentar otros selectores comunes
             try:
                 curp_input = driver.find_element(By.NAME, "curp")
                 curp_input.clear()
                 curp_input.send_keys(curp)
                 print(f"✅ CURP ingresado: {curp}")
             except:
-                print("❌ No se pudo encontrar el campo de CURP. Verifica el sitio manualmente.")
-                print("   Inspecciona con F12 y actualiza los selectores en el código.")
+                print("❌ No se pudo encontrar el campo de CURP.")
+                print("   Verifica que el sitio gob.mx/curp/ esté disponible.")
                 return False
         
         # Paso 3: Hacer clic en botón de búsqueda
-        print("[3/5] Haciendo clic en botón de búsqueda...")
+        print("[3/5] Haciendo clic en búsqueda...")
         try:
             search_btn = WebDriverWait(driver, TIMEOUT).until(
                 EC.element_to_be_clickable((By.ID, "btnBuscar"))
@@ -118,84 +151,113 @@ def download_curp_pdf(curp):
             print("✅ Búsqueda iniciada")
             time.sleep(2)
         except Exception as e:
-            print(f"⚠️  Botón de búsqueda no encontrado. Error: {e}")
-            print("   Intenta hacer clic manualmente en el navegador.")
+            print(f"⚠️  Error en búsqueda: {e}")
         
         # Paso 4: Pausa para CAPTCHA
         print("\n[4/5] ⏸️  PAUSA PARA CAPTCHA MANUAL")
-        print("="*50)
+        print("="*60)
         print("Por favor:")
-        print("  1. Resuelve el CAPTCHA en el navegador")
-        print("  2. Haz clic en 'Buscar' o 'Consultar'")
-        print("  3. Vuelve aquí y presiona Enter")
-        print("="*50)
+        print(f"  1. Resuelve el CAPTCHA en el navegador")
+        print(f"  2. Haz clic en 'Buscar' o 'Consultar'")
+        print(f"  3. Vuelve aquí y presiona Enter")
+        print("="*60)
         input("\n⏸️  Presiona Enter cuando hayas resuelto el CAPTCHA...")
         
         time.sleep(2)
         
-        # Paso 5: Descargar PDF (hacer clic en imprimir/descargar)
+        # Paso 5: Descargar PDF
         print("\n[5/5] Descargando PDF...")
         try:
-            # Buscar botón de imprimir/descargar
             print_btn = WebDriverWait(driver, TIMEOUT).until(
                 EC.element_to_be_clickable((By.ID, "btnImprimir"))
             )
             print_btn.click()
             print("✅ Diálogo de impresión abierto")
-            
-            # Usar atajo de teclado para guardar como PDF
-            # Nota: En sistemas reales, configura la impresora predeterminada como "Imprimir a PDF"
             print("💡 Tip: Configura 'Imprimir a PDF' como impresora predeterminada")
             print("   para que se descargue automáticamente.")
             
             time.sleep(5)
-            print("✅ PDF descargado (o en proceso de descarga)")
+            print("✅ PDF en proceso de descarga")
             
         except Exception as e:
-            print(f"⚠️  No se pudo encontrar botón de descarga. Error: {e}")
+            print(f"⚠️  No se pudo encontrar botón de descarga: {e}")
             print("   Intenta descargar manualmente desde el navegador.")
         
-        print(f"\n✅ ¡Proceso completado! PDF guardado en: {os.path.abspath(DOWNLOAD_DIR)}")
+        print(f"\n✅ [{index}/{total}] ¡CURP procesado! {curp}")
         return True
         
     except KeyboardInterrupt:
         print("\n⚠️  Proceso interrumpido por el usuario.")
         return False
     except Exception as e:
-        print(f"\n❌ Error durante el proceso: {e}")
+        print(f"\n❌ Error procesando CURP {curp}: {e}")
         import traceback
         traceback.print_exc()
         return False
+
+
+def main():
+    print("\n" + "="*60)
+    print("DESCARGADOR DE CURP - Batch (Múltiples CURPs)")
+    print("="*60 + "\n")
+    
+    # Cargar CURPs
+    print(f"[*] Leyendo CURPs desde '{CURPS_FILE}'...\n")
+    curps = load_curps_from_file(CURPS_FILE)
+    
+    if not curps:
+        print("\n❌ No hay CURPs válidos para procesar.")
+        sys.exit(1)
+    
+    print(f"✅ Se encontraron {len(curps)} CURP(s):")
+    for i, curp in enumerate(curps, 1):
+        print(f"   {i}. {curp}")
+    
+    # Confirmar
+    respuesta = input("\n¿Deseas continuar? (s/n): ").lower()
+    if respuesta != 's':
+        print("❌ Operación cancelada.")
+        sys.exit(0)
+    
+    # Configurar driver
+    driver = None
+    successful = 0
+    failed = 0
+    
+    try:
+        driver = setup_driver()
+        
+        # Procesar cada CURP
+        for index, curp in enumerate(curps, 1):
+            success = download_curp_pdf(driver, curp, index, len(curps))
+            if success:
+                successful += 1
+            else:
+                failed += 1
+        
+    except KeyboardInterrupt:
+        print("\n\n⚠️  Proceso interrumpido por el usuario.")
+    except Exception as e:
+        print(f"\n❌ Error general: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         if driver:
             print("\n[*] Cerrando navegador...")
             driver.quit()
             print("✅ Navegador cerrado")
+    
+    # Resumen final
+    print("\n" + "="*60)
+    print("RESUMEN FINAL")
+    print("="*60)
+    print(f"✅ Exitosos: {successful}/{len(curps)}")
+    print(f"❌ Fallidos: {failed}/{len(curps)}")
+    print(f"📁 PDFs guardados en: {os.path.abspath(DOWNLOAD_DIR)}")
+    print("="*60 + "\n")
+    
+    sys.exit(0 if failed == 0 else 1)
 
 
 if __name__ == "__main__":
-    print("\n" + "="*60)
-    print("DESCARGADOR DE CURP - Opción 1: Manual con Pausa CAPTCHA")
-    print("="*60 + "\n")
-    
-    # Validar CURP
-    if not CURP_NUMBER or CURP_NUMBER == "ABCD890513ABCDEF09":
-        print("❌ Error: Debes configurar tu CURP en la variable CURP_NUMBER")
-        print("   Abre este archivo y reemplaza:")
-        print("   CURP_NUMBER = 'TU_CURP_AQUI'")
-        sys.exit(1)
-    
-    # Ejecutar descarga
-    success = download_curp_pdf(CURP_NUMBER)
-    
-    # Resultado final
-    if success:
-        print("\n" + "="*60)
-        print("✅ ¡Éxito! Tu PDF de CURP está listo.")
-        print("="*60)
-        sys.exit(0)
-    else:
-        print("\n" + "="*60)
-        print("❌ Hubo un problema durante la descarga.")
-        print("="*60)
-        sys.exit(1)
+    main()
